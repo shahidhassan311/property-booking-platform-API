@@ -20,4 +20,14 @@ class Property extends Model
         'images' => 'array',
         'price_per_night' => 'decimal:2',
     ];
+
+    public function availabilities()
+    {
+        return $this->hasMany(Availability::class);
+    }
+
+    public function booking()
+    {
+        return $this->hasMany(Booking::class);
+    }
 }

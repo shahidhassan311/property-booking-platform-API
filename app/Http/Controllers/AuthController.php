@@ -2,10 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Auth\RegisterRequest;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use App\Http\Requests\Auth\LoginRequest;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\JsonResponse;
+use App\Helpers\ApiResponse;
+use Illuminate\Support\Facades\DB;
+use Throwable;
+
 
 /**
  * @OA\Tag(name="Auth")
@@ -30,23 +38,29 @@ class AuthController extends Controller
      *     @OA\Response(response=201, description="User registered")
      * )
      */
-    public function register(Request $request)
+    public function register(RegisterRequest $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|unique:users,email',
-            'password' => 'required|string|min:6',
-            'role' => 'required|in:admin,guest',
-        ]);
+        try {
+            DB::beginTransaction();
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => $request->role,
-        ]);
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'role' => $request->role,
+            ]);
 
-        return response()->json($user, 201);
+            DB::commit();
+
+            return ApiResponse::success($user, 'User registered successfully.', 201);
+
+        } catch (Throwable $e) {
+            DB::rollBack();
+            Log::error('Registration error', ['exception' => $e]);
+            return ApiResponse::error('An unexpected error occurred during registration.', 500, [
+                'exception' => $e->getMessage()
+            ]);
+        }
     }
 
     /**
@@ -66,28 +80,30 @@ class AuthController extends Controller
      *     @OA\Response(response=422, description="Invalid credentials")
      * )
      */
-    public function login(Request $request)
+    public function login(LoginRequest $request): JsonResponse
     {
-        $request->validate([
-            'email' => 'required|string|email',
-            'password' => 'required|string',
-        ]);
+        try {
+            $request->authenticate();
 
-        $user = User::where('email', $request->email)->first();
+            $user = $request->user();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return ApiResponse::success([
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+                'role' => $user->role,
+            ], 'Login successful.', 200);
+
+        } catch (ValidationException $e) {
+            return ApiResponse::error('Invalid login credentials.', 422, $e->errors());
+
+        } catch (Throwable $e) {
+            Log::error('Login error', ['exception' => $e]);
+            return ApiResponse::error('An unexpected error occurred during login.', 500, [
+                'exception' => $e->getMessage()
             ]);
         }
-
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'access_token' => $token,
-            'token_type' => 'Bearer',
-            'role' => $user->role,
-        ]);
     }
 
     /**

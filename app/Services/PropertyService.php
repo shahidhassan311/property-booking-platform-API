@@ -5,25 +5,43 @@ namespace App\Services;
 use App\Repositories\Interfaces\PropertyRepositoryInterface;
 
 class PropertyService {
-    public function __construct(private PropertyRepositoryInterface $propertyRepo) {}
+    public function __construct(private PropertyRepositoryInterface $propertyRepository) {}
 
-    public function list() {
-        return $this->propertyRepo->all();
+    public function list()
+    {
+        return $this->propertyRepository->all();
     }
 
-    public function get($id) {
-        return $this->propertyRepo->find($id);
+    public function filterProperties(array $filters)
+    {
+        return $this->propertyRepository->filterProperties($filters);
     }
 
-    public function create(array $data) {
-        return $this->propertyRepo->create($data);
+    public function get($id)
+    {
+        return $this->propertyRepository->find($id);
     }
 
-    public function update($id, array $data) {
-        return $this->propertyRepo->update($id, $data);
+    public function create(array $data)
+    {
+        return $this->propertyRepository->create($data);
     }
 
-    public function delete($id) {
-        return $this->propertyRepo->delete($id);
+    public function update($id, array $data)
+    {
+        $property = $this->propertyRepository->find($id);
+
+        if (!$property) {
+            throw new \Exception("Property not found.");
+        }
+
+        $property->update($data);
+
+        return $property;
+    }
+
+    public function delete($id)
+    {
+        return $this->propertyRepository->delete($id);
     }
 }

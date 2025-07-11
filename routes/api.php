@@ -18,6 +18,7 @@ Route::middleware('auth:sanctum')->post('/logout', [AuthController::class, 'logo
 Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/properties', [PropertyController::class, 'index']);
+    Route::get('/properties/filter', [PropertyController::class, 'filter']);
     Route::get('/properties/{id}', [PropertyController::class, 'show']);
     Route::post('/bookings', [BookingController::class, 'store']);
 

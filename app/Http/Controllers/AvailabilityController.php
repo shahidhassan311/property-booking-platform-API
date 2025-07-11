@@ -3,15 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Availability\StoreAvailabilityRequest;
 use App\Repositories\Interfaces\AvailabilityRepositoryInterface;
-use Illuminate\Http\Request;
+use App\Helpers\ApiResponse;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * @OA\Tag(name="Availability")
  */
 class AvailabilityController extends Controller
 {
-    public function __construct(private AvailabilityRepositoryInterface $availabilityRepo) {}
+    public function __construct(private AvailabilityRepositoryInterface $availabilityRepository) {}
 
     /**
      * @OA\Post(
@@ -32,13 +35,38 @@ class AvailabilityController extends Controller
      *     @OA\Response(response=422, description="Invalid input or date range")
      * )
      */
-    public function store(Request $request) {
-        $data = $request->validate([
-            'property_id' => 'required|exists:properties,id',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-        ]);
+    public function store(StoreAvailabilityRequest $request)
+    {
+        try {
+            $data = $request->validated();
 
-        return $this->availabilityRepo->create($data);
+            DB::beginTransaction();
+
+            $hasConflict = $this->availabilityRepository->hasOverlap(
+                $data['property_id'],
+                $data['start_date'],
+                $data['end_date']
+            );
+
+            if ($hasConflict) {
+                DB::rollBack();
+                return ApiResponse::error(
+                    'This property already has availability set during the selected date range. Please choose non-overlapping dates.',
+                    422
+                );
+            }
+
+            $availability = $this->availabilityRepository->create($data);
+
+            DB::commit();
+
+            return ApiResponse::success($availability, 'Availability added successfully.', 201);
+
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return ApiResponse::error('An unexpected error occurred.', 500, [
+                'exception' => $e->getMessage()
+            ]);
+        }
     }
 }

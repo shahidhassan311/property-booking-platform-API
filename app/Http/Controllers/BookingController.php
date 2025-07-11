@@ -3,16 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\CreateBookingJob;
 use App\Repositories\Interfaces\BookingRepositoryInterface;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Requests\Booking\StoreBookingRequest;
+use App\Helpers\ApiResponse;
+use Illuminate\Support\Facades\DB;
+use Throwable;
 
 /**
  * @OA\Tag(name="Bookings")
  */
 class BookingController extends Controller
 {
-    public function __construct(private BookingRepositoryInterface $bookingRepo) {}
+    public function __construct(private BookingRepositoryInterface $bookingRepository) {}
 
     /**
      * @OA\Get(
@@ -23,8 +27,9 @@ class BookingController extends Controller
      *     @OA\Response(response=200, description="Success")
      * )
      */
-    public function index() {
-        return $this->bookingRepo->all();
+    public function index()
+    {
+        return $this->bookingRepository->all();
     }
 
     /**
@@ -46,21 +51,30 @@ class BookingController extends Controller
      *     @OA\Response(response=422, description="Property not available or invalid input")
      * )
      */
-    public function store(Request $request) {
-        $data = $request->validate([
-            'property_id' => 'required|exists:properties,id',
-            'start_date' => 'required|date',
-            'end_date' => 'required|date|after_or_equal:start_date',
-        ]);
+    public function store(StoreBookingRequest $request)
+    {
+        try {
+            $data = $request->validated();
+            $userId = Auth::id();
 
-        if (! $this->bookingRepo->isAvailable($data['property_id'], $data['start_date'], $data['end_date'])) {
-            return response()->json(['error' => 'Property not available for these dates'], 422);
+            $isAvailable = $this->bookingRepository->isAvailable(
+                $data['property_id'],
+                $data['start_date'],
+                $data['end_date']
+            );
+
+            if (!$isAvailable) {
+                return ApiResponse::error('The property is not available for the selected dates.', 422);
+            }
+
+            CreateBookingJob::dispatch($data, $userId);
+
+            return ApiResponse::success([], 'Your booking request is being processed.', 202);
+
+        } catch (Throwable $e) {
+            return ApiResponse::error('An unexpected error occurred.', 500, [
+                'exception' => $e->getMessage()
+            ]);
         }
-
-        return $this->bookingRepo->create([
-            ...$data,
-            'user_id' => Auth::id(),
-            'status' => 'pending'
-        ]);
     }
 }
